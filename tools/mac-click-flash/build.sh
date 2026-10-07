@@ -21,7 +21,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 PLIST
 xcrun swiftc -O -framework AppKit -framework CoreBluetooth \
     "$SCRIPT_DIR/ClickCounter.swift" "$SCRIPT_DIR/AudioCodec.swift" \
-    "$SCRIPT_DIR/AudioReceiver.swift" "$SCRIPT_DIR/SpeechPipeline.swift" \
+    "$SCRIPT_DIR/AudioReceiver.swift" "$SCRIPT_DIR/CloudTranscriber.swift" "$SCRIPT_DIR/SpeechPipeline.swift" \
     "$SCRIPT_DIR/AudioWaveOverlay.swift" "$SCRIPT_DIR/ThunderboltView.swift" "$SCRIPT_DIR/CommentOverlay.swift" "$SCRIPT_DIR/main.swift" \
     -o "$APP/Contents/MacOS/PebbleClickFlash"
 codesign --force --sign - "$APP"

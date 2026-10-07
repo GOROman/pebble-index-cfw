@@ -63,3 +63,11 @@ open -W "build/Pebble Click Flash.app" --args --self-test --log "$PWD/build/mac-
 CFWはクリック後だけ短時間広告します。5回素早く押すと復旧モードに戻るため、テスト時は1回ずつ押してください。公式Pebbleアプリは終了したままにしてください。
 
 音声転送の開始通知で白くフラッシュし、完了後は全画面の下部に緑のオシロスコープ風波形を20秒表示します。録音全体の最小・最大振幅を画素ごとに描き、短いピークを残します。表示は入力を遮らず、コメントとクリック検知も継続します。`--wave-file /path/to/clip.wav` で白フラッシュと波形だけをテストできます。
+
+## OpenAIクラウドSTT
+
+`~/.config/pebble-click-flash/openai-api-key` にAPIキーを保存して権限を600に設定すると、自動でOpenAIの `/v1/audio/transcriptions` を使用します。`OPENAI_API_KEY` 環境変数でも指定できます。キーはアプリ、ログ、Gitに含めません。録音をノイズ低減したWAVをOpenAIへ送信し、結果を `.openai.txt` に保存してコメント表示します。API利用料金が発生します。
+
+明示指定は `--stt openai`、ローカルに戻すには `--stt local`。モデルは `--cloud-model` で指定可能。APIエラー時は録音を残し、メニューにエラーを表示します。自動再送はしません。
+
+公式仕様: https://developers.openai.com/api/docs/guides/speech-to-text

@@ -22,11 +22,13 @@ final class SpeechPipeline {
     private let model: URL
     private let ffmpeg: URL
     private let whisper: URL
+    private let cloud: CloudTranscriber?
 
-    init(model: URL, ffmpeg: URL, whisper: URL) {
+    init(model: URL, ffmpeg: URL, whisper: URL, cloud: CloudTranscriber? = nil) {
         self.model = model
         self.ffmpeg = ffmpeg
         self.whisper = whisper
+        self.cloud = cloud
     }
 
     func transcribe(_ recording: URL, status: @escaping (String) -> Void,
@@ -34,7 +36,7 @@ final class SpeechPipeline {
         queue.async {
             let start = Date()
             do {
-                for file in [self.model, self.ffmpeg, self.whisper] {
+                for file in (self.cloud == nil ? [self.model, self.ffmpeg, self.whisper] : [self.ffmpeg]) {
                     guard FileManager.default.fileExists(atPath: file.path) else {
                         throw Failure.unavailable(file.path)
                     }
@@ -52,6 +54,16 @@ final class SpeechPipeline {
                     "-af", "highpass=f=90,lowpass=f=3800,afftdn=nr=12:nf=-35:tn=1,dynaudnorm=f=150:g=7:p=0.85",
                     "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", cleaned.path,
                 ], trace: traceFile)
+                if let cloud = self.cloud {
+                    DispatchQueue.main.async { status("OpenAIで文字起こし中…") }
+                    let raw = try cloud.transcribe(cleaned)
+                    let transcript = stem.appendingPathExtension("openai.txt")
+                    try raw.write(to: transcript, atomically: true, encoding: .utf8)
+                    let result = Result(text: Self.displayText(raw), cleanedAudio: cleaned,
+                                        transcript: transcript, elapsed: Date().timeIntervalSince(start))
+                    DispatchQueue.main.async { completion(.success(result)) }
+                    return
+                }
                 DispatchQueue.main.async { status("日本語を文字起こし中…") }
                 try self.run(self.whisper, [
                     "-m", self.model.path, "-f", cleaned.path, "-l", "ja", "-nt", "-nf",

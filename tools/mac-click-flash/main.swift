@@ -63,8 +63,18 @@ final class ClickFlashApp: NSObject, NSApplicationDelegate, CBCentralManagerDele
         let model = option("--model") ?? root.appendingPathComponent("models/ggml-small.bin").path
         let ffmpeg = option("--ffmpeg") ?? "/opt/homebrew/bin/ffmpeg"
         let whisper = option("--whisper") ?? "/opt/homebrew/bin/whisper-cli"
+        let keyFile = option("--api-key-file").map { URL(fileURLWithPath: $0) } ?? CloudTranscriber.defaultKeyFile
+        let configured = FileManager.default.fileExists(atPath: keyFile.path) || ProcessInfo.processInfo.environment["OPENAI_API_KEY"] != nil
+        let provider = option("--stt") ?? (configured ? "openai" : "local")
+        guard ["openai", "local"].contains(provider) else {
+            log("error", ["message": "--stt must be openai or local"])
+            NSApp.terminate(nil); return
+        }
+        let cloud = provider == "openai" ? CloudTranscriber(keyFile: keyFile, model: option("--cloud-model") ?? "gpt-transcribe") : nil
+        speechLine.title = provider == "openai" ? "STT: OpenAIクラウド認識" : "STT: 日本語・ローカル認識"
+        log("stt-provider", ["provider": provider])
         speech = SpeechPipeline(model: URL(fileURLWithPath: model), ffmpeg: URL(fileURLWithPath: ffmpeg),
-                                whisper: URL(fileURLWithPath: whisper))
+                                whisper: URL(fileURLWithPath: whisper), cloud: cloud)
         NotificationCenter.default.addObserver(
             self, selector: #selector(screensChanged),
             name: NSApplication.didChangeScreenParametersNotification, object: nil
