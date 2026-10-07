@@ -6,7 +6,7 @@ CFWシングルクリックを受信するとアプリ画面に四方向の黄�
 
 ## 適用
 
-1. 対象Flasherへ `offline-fix.patch`、`MainActivity.patch`、`AudioMainActivity.patch`、`ClipDownload.patch`、`OverlayManifest.patch`、`OverlayMainActivity.patch`、`OverlayScanner.patch` の順で `git apply`。
+1. 対象Flasherへ `offline-fix.patch`、`MainActivity.patch`、`AudioMainActivity.patch`、`ClipDownload.patch`、`OverlayManifest.patch`、`OverlayMainActivity.patch`、`OverlayScanner.patch`、`ForegroundAudio.patch` の順で `git apply`。
 2. `OfflineEnvironment.kt`、`ThunderEffect.kt`、`AudioWaveView.kt`、`ThunderService.kt` を `src/main/kotlin/poc/ringclick/` にコピー。
 3. `thunder.wav` を `src/main/res/raw/` にコピー。
 4. Android SDKとJDK 17以降で `./gradlew assembleDebug -PcfwLocal=/absolute/path/DA14531_App.bin`。
@@ -28,3 +28,5 @@ Mac側とAndroid側が同時に録音を取得しようとすると、先に取�
 「他のアプリの上に表示」と通知を許可すると、connectedDevice型のForeground ServiceがBLEスキャンを継続します。アプリをホームへ戻しても、クリックで全画面の黄金の稲妻と雷音が出ます。通知の「停止」で終了できます。アプリを再度開くと再開します。サービスが有効な状態での再起動はBOOT_COMPLETEDで再開を試みます。OSやメーカーによる停止・強制停止・電源オフ・Bluetoothオフ中までの検知は保証しません。
 
 TYPE_APPLICATION_OVERLAYで画面を表示し、触れたりフォーカスを奪ったりしません。ウィンドウの不透明度は0.75に抑えています。BLEのメーカーIDフィルターを使い、無フィルタースキャンが画面オフで止まる問題を避けます。ロック画面や権限ダイアログなどの保護されたシステム画面ではOSにより表示が制限される場合があります。
+
+Androidの自動録音取得はアプリ画面を開いている間だけ動きます。ホームや別アプリに移動した後はMacが録音を取得できます。雷の常駐サービスは引き続き動きます。
