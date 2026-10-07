@@ -1,0 +1,214 @@
+diff --git a/src/main/kotlin/poc/ringclick/Flasher.kt b/src/main/kotlin/poc/ringclick/Flasher.kt
+index 398556f..d472f66 100644
+--- a/src/main/kotlin/poc/ringclick/Flasher.kt
++++ b/src/main/kotlin/poc/ringclick/Flasher.kt
+@@ -35,7 +35,7 @@ import kotlinx.coroutines.withTimeoutOrNull
+ class Flasher(private val context: Context, private val log: (String) -> Unit) {
+ 
+     /** true = flash completed successfully; false = failure/timeout. */
+-    suspend fun flash(image: ByteArray, timeoutMs: Long = 120_000): Boolean {
++    suspend fun flash(image: ByteArray, address: String, timeoutMs: Long = 120_000): Boolean {
+         if (image.size < 4 || (image[0].toInt() and 0xFF) != 0x70 ||
+             (image[1].toInt() and 0xF0) != 0x50) {
+             log("REFUSED: image is not AN-B-001 (0x70 0x5X)")
+@@ -46,34 +46,7 @@ class Flasher(private val context: Context, private val log: (String) -> Unit) {
+         val done = CompletableDeferred<Boolean>()
+         val served = AtomicBoolean(false)
+ 
+-        val env = HaversineEnvironment(
+-            context.applicationContext,
+-            HaversineEnvironment.ApplicationHardwareVersion(11, 0),
+-        )
+-        env.cache = object : HaversineSatelliteCacheType {
+-            override fun fetchCachedState(id: HaversineSatelliteId): HaversineSatelliteCacheableState? = null
+-            override fun cacheState(state: HaversineSatelliteCacheableState, id: HaversineSatelliteId) {}
+-        }
+-        env.permissionsDelegate = object : HaversinePermissionsDelegate {
+-            override fun shouldHandleAdvertisement(advertisement: HaversineAdvertisement) = true
+-            override fun shouldHandleSatellite(satellite: HaversineSatellite) = true
+-            override fun shouldTransferCollections(satellite: HaversineSatellite) = false
+-        }
+-        env.debugDelegate = object : HaversineDebugDelegate {
+-            override fun handleHaversineDebugInfo(info: HaversineDebugInfo, satellite: HaversineSatellite) {}
+-            override fun shouldReadRxRSSI(satellite: HaversineSatellite) = false
+-            override fun handleRxRSSI(rssi: Float, satellite: HaversineSatellite) {}
+-        }
+-        env.hacksDelegate = object : HaversineHacksDelegate {
+-            override fun shouldWipeCollectionsBeforeTransfer(satellite: HaversineSatellite) = false
+-            override fun wipedCollectionsBeforeTransfer(satellite: HaversineSatellite) {}
+-        }
+-        env.transferDelegate = object : HaversineCollectionTransferCallback {
+-            override fun firstCollectionToTransferInRange(indexes: TelestoStoredCollectionIndexes, satellite: HaversineSatellite) = Int.MAX_VALUE
+-            override fun willTransferCollectionsInRange(indexes: TelestoStoredCollectionIndexes, satellite: HaversineSatellite) {}
+-            override fun collectionTransferDidFinish(data: ByteArray, count: Int, satellite: HaversineSatellite) {}
+-            override fun collectionTransferDidFail(error: HaversineException, count: Int, satellite: HaversineSatellite) {}
+-        }
++        val env = offlineEnvironment(context, address)
+         env.updateDelegate = object : HaversineUpdateDelegate {
+             override fun getFirmwareUpdate(satellite: HaversineSatellite): HaversineEnvironment.FirmwareUpdate? {
+                 if (served.get()) return null   // one flash is enough — stop the re-flash loop
+diff --git a/src/main/kotlin/poc/ringclick/MainActivity.kt b/src/main/kotlin/poc/ringclick/MainActivity.kt
+index 5ba0a9b..b3c0059 100644
+--- a/src/main/kotlin/poc/ringclick/MainActivity.kt
++++ b/src/main/kotlin/poc/ringclick/MainActivity.kt
+@@ -343,6 +343,7 @@ class MainActivity : AppCompatActivity() {
+     }
+ 
+     private fun logLine(line: String) {
++        android.util.Log.i("PebbleFlasher", line)
+         runOnUiThread {
+             // Only auto-scroll if the user is already at the bottom — don't yank
+             // them back down while they re-read an earlier line.
+diff --git a/src/main/kotlin/poc/ringclick/OperationRunner.kt b/src/main/kotlin/poc/ringclick/OperationRunner.kt
+index adeec0c..e28781b 100644
+--- a/src/main/kotlin/poc/ringclick/OperationRunner.kt
++++ b/src/main/kotlin/poc/ringclick/OperationRunner.kt
+@@ -50,7 +50,8 @@ class OperationRunner(
+             RingKind.NONE -> { log("Ring not found. Press the button and bring it closer to the phone."); return false }
+         }
+         log("=== SUOTA cfw.bin (${images.cfwVersion}) ===")
+-        if (!flasher.flash(images.cfw)) return false
++        val flashAddress = scanner.state.value.address ?: return false
++        if (!flasher.flash(images.cfw, flashAddress)) return false
+         return verify(RingKind.CFW)
+     }
+ 
+diff --git a/src/main/kotlin/poc/ringclick/TelestoOps.kt b/src/main/kotlin/poc/ringclick/TelestoOps.kt
+index 329c8d6..bd116e6 100644
+--- a/src/main/kotlin/poc/ringclick/TelestoOps.kt
++++ b/src/main/kotlin/poc/ringclick/TelestoOps.kt
+@@ -2,6 +2,7 @@ package poc.ringclick
+ 
+ import android.annotation.SuppressLint
+ import android.content.Context
++import com.wtlp.haversinesatellitelibrary.HaversineSatelliteManager
+ import com.wtlp.haversinesatellitelibrary.HaversineException
+ import com.wtlp.haversinesatellitelibrary.HaversineLinkController
+ import com.wtlp.haversinesatellitelibrary.HaversineSatellite
+@@ -12,23 +13,9 @@ import com.wtlp.haversinesatellitelibrary.operations.TelestoInputParameters
+ import com.wtlp.haversinesatellitelibrary.operations.TelestoOperation
+ import com.wtlp.haversinesatellitelibrary.operations.TelestoOperationType
+ import com.wtlp.haversinesatellitelibrary.operations.TelestoRequest
+-import coredevices.haversine.CollectionIndexStorage
+-import coredevices.haversine.KMPHaversineDebugDelegate
+-import coredevices.haversine.KMPHaversineDebugInfo
+-import coredevices.haversine.KMPHaversineHacksDelegate
+-import coredevices.haversine.KMPHaversineSatellite
+-import coredevices.haversine.KMPHaversineSatelliteManager
+ import kotlin.coroutines.resume
+-import kotlinx.coroutines.CancellationException
+-import kotlinx.coroutines.CoroutineScope
+ import kotlinx.coroutines.Dispatchers
+-import kotlinx.coroutines.SupervisorJob
+-import kotlinx.coroutines.cancel
+ import kotlinx.coroutines.delay
+-import kotlinx.coroutines.flow.MutableStateFlow
+-import kotlinx.coroutines.flow.StateFlow
+-import kotlinx.coroutines.flow.collect
+-import kotlinx.coroutines.launch
+ import kotlinx.coroutines.suspendCancellableCoroutine
+ import kotlinx.coroutines.withContext
+ import kotlinx.coroutines.withTimeoutOrNull
+@@ -138,76 +125,36 @@ class TelestoOps(private val context: Context, private val log: (String) -> Unit
+         log("reflection failed: $e"); null
+     }
+ 
+-    /**
+-     * Creates a satellite manager, DRIVES DISCOVERY, hands [block] the ring's link
+-     * controller, then tears the whole thing down (scan + manager scope).
+-     *
+-     * The catch that broke official -> failsafe: `getSatelliteById` is only a ONE-SHOT
+-     * `wrap.retrieveSatellite(id)`, which throws ("No cached state ... cannot reconstruct
+-     * without discovery") the instant it runs if discovery has not cached the ring yet —
+-     * it does NOT wait. And `startScanning` is a COLD flow: the native scan runs only
+-     * while it is collected. So we launch a collector to drive discovery AND retry
+-     * getSatelliteById until the cache is populated (or 120 s elapse).
+-     *
+-     * Skipping the scan was meant to dodge the lib's auto-update, but that is moot: the
+-     * app has no INTERNET permission, so the update job fails on DNS (seen in logcat).
+-     * Discovery here only finds the ring; it never programs it.
+-     */
++    /** Discover only the selected ring, with automatic firmware downloads disabled. */
+     @SuppressLint("MissingPermission")
+-    private suspend fun <T> withLink(address: String, block: suspend (HaversineLinkController) -> T): T? {
+-        val id = address.replace(":", "")
+-        // SupervisorJob: the lib's offline update job fails on DNS; don't let it cancel us.
+-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+-        val manager = KMPHaversineSatelliteManager(
+-            pairedSatelliteIdProvider = { id },
+-            debugDelegate = object : KMPHaversineDebugDelegate {
+-                override fun handleHaversineDebugInfo(info: KMPHaversineDebugInfo) {}
+-                override fun shouldReadRxRSSI(satellite: KMPHaversineSatellite) = false
+-                override fun handleRxRSSI(rssi: Float, satellite: KMPHaversineSatellite) {}
+-            },
+-            hacksDelegate = object : KMPHaversineHacksDelegate {
+-                override fun shouldWipeCollectionsBeforeTransfer(satellite: KMPHaversineSatellite) = false
+-                override fun wipedCollectionsBeforeTransfer(satellite: KMPHaversineSatellite) {}
+-            },
+-            // In-memory stub: this app never syncs collections, the cursor is never read back.
+-            collectionIndexStorage = object : CollectionIndexStorage {
+-                private val flow = MutableStateFlow<Int?>(null)
+-                override val lastSuccessfulCollectionIndex: StateFlow<Int?> = flow
+-                override fun setLastSuccessfulCollectionIndex(index: Int?) { flow.value = index }
+-            },
+-            context = context.applicationContext,
+-            hwVersion = Pair(11, 0),
+-            scope,
+-        )
+-        try {
+-            manager.awaitBluetoothReady()
+-            // Cold flow: collecting it starts the native scan; cancelling the scope stops it.
+-            scope.launch {
+-                try { manager.startScanning().collect { } }
+-                catch (_: CancellationException) { /* expected: finally cancels the scope */ }
+-                catch (e: Exception) { log("scan ended: $e") }
+-            }
+-            log("Opening link with $address (scanning; no auto-update)…")
+-            // Retry until discovery caches the ring (getSatelliteById throws until then).
+-            val satellite = withTimeoutOrNull(120_000) {
+-                var s: KMPHaversineSatellite? = null
+-                while (s == null) {
+-                    s = try { manager.getSatelliteById(id) } catch (_: Exception) { null }
+-                    if (s == null) delay(1_500)
++    private suspend fun <T> withLink(address: String, block: suspend (HaversineLinkController) -> T): T? =
++        withContext(Dispatchers.Main) {
++            val id = address.replace(":", "")
++            val env = offlineEnvironment(context, address)
++            val manager = HaversineSatelliteManager(context.applicationContext, env)
++            try {
++                manager.startScanning()
++                log("Opening offline link with $address…")
++                val satellite = withTimeoutOrNull(120_000) {
++                    var selected: HaversineSatellite? = null
++                    while (selected == null) {
++                        selected = manager.discoveredSatellites.firstOrNull {
++                            it.id?.rawValue?.replace(":", "")?.equals(id, ignoreCase = true) == true
++                        }
++                        if (selected == null) delay(500)
++                    }
++                    selected
++                } ?: run {
++                    log("FAILED: selected ring not found — press the ring button")
++                    return@withContext null
+                 }
+-                s
+-            } ?: run {
+-                log("FAILED: satellite did not appear within 120s — press the ring button"); return null
+-            }
+-            val link = linkControllerOf(satellite.wrap) ?: run {
+-                log("FAILED: linkController unreachable via reflection"); return null
++                val link = linkControllerOf(satellite) ?: return@withContext null
++                log("Satellite ${satellite.id} ready; link = ${link.state}")
++                block(link)
++            } finally {
++                manager.stopScanning()
+             }
+-            log("Satellite ${satellite.id} ready; link = ${link.state}")
+-            return block(link)
+-        } finally {
+-            scope.cancel()   // stop scanning + tear down the manager's coroutines (no leak)
+         }
+-    }
+ 
+     private fun preview(data: ByteArray?): String =
+         if (data == null) "<null>" else data.joinToString(" ") { "%02X".format(it) }

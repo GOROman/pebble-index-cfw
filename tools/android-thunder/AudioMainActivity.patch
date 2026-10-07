@@ -1,0 +1,46 @@
+--- a/src/main/kotlin/poc/ringclick/MainActivity.kt
++++ b/src/main/kotlin/poc/ringclick/MainActivity.kt
+@@ -51,6 +51,7 @@
+     private lateinit var logScroll: ScrollView
+     private lateinit var bottomNav: BottomNavigationView
+ 
++    private lateinit var audioWave: AudioWaveView
+     private lateinit var thunder: ThunderEffect
+     private var lastThunderClicks = 0
+ 
+@@ -72,6 +73,18 @@
+     override fun onCreate(savedInstanceState: Bundle?) {
+         super.onCreate(savedInstanceState)
+         setContentView(R.layout.activity_main)
++        audioWave = AudioWaveView(this).apply { visibility = View.GONE }
++        findViewById<LinearLayout>(R.id.root).addView(audioWave, 1,
++            LinearLayout.LayoutParams(MATCH_PARENT, (150 * resources.displayMetrics.density).toInt()))
++        if (intent.getBooleanExtra("wave_test", false)) {
++            window.decorView.postDelayed({
++                audioWave.receiving(); thunder.whiteFlash()
++                window.decorView.postDelayed({
++                    val fixture = File(filesDir, "wave-test.wav")
++                    if (fixture.exists()) audioWave.showWav(fixture.readBytes())
++                }, 400)
++            }, 600)
++        }
+         thunder = ThunderEffect(this, findViewById(android.R.id.content))
+         if (intent.getBooleanExtra("thunder_test", false)) {
+             window.decorView.postDelayed({ thunder.flash() }, 600)
+@@ -191,11 +204,15 @@
+         scope.launch {
+             logLine("\n=== Recording waiting (%.1f s) — fetching ===".format(clipSeconds(s) ?: 0.0))
+             val wav = try {
+-                ClipDownload.fetch(this@MainActivity, address) { logLine(it) }
++                ClipDownload.fetch(this@MainActivity, address, onReceiveStart = {
++                    audioWave.receiving()
++                    thunder.whiteFlash()
++                }) { logLine(it) }
+             } catch (e: Exception) {
+                 logLine("EXCEPTION: $e"); null
+             }
+             if (wav != null) {
++                audioWave.showWav(wav)
+                 val file = clips.save(wav)
+                 logLine("=== Saved ${file.name} ===\n")
+                 renderRecordings()

@@ -1,0 +1,19 @@
+--- a/src/main/kotlin/poc/ringclick/ClipDownload.kt
++++ b/src/main/kotlin/poc/ringclick/ClipDownload.kt
+@@ -41,7 +41,7 @@
+     /** Bytes on the wire become a WAV, returned for the caller to keep. Null on failure. */
+     @SuppressLint("MissingPermission")
+     @Suppress("DEPRECATION") // one code path for minSdk 31..36, as elsewhere in this app
+-    suspend fun fetch(context: Context, address: String, log: (String) -> Unit): ByteArray? {
++    suspend fun fetch(context: Context, address: String, onReceiveStart: () -> Unit = {}, log: (String) -> Unit): ByteArray? {
+         val adapter = context.getSystemService(BluetoothManager::class.java).adapter
+         if (adapter == null) { log("No Bluetooth"); return null }
+         val device = adapter.getRemoteDevice(address)
+@@ -80,6 +80,7 @@
+                     CTRL_POINT_UUID -> when {
+                         v.size >= 3 && v[0] == CMD_SEND -> {
+                             expectedSamples = (v[1].toInt() and 0xFF) or ((v[2].toInt() and 0xFF) shl 8)
++                            android.os.Handler(android.os.Looper.getMainLooper()).post { onReceiveStart() }
+                             log("Ring is sending $expectedSamples samples…")
+                         }
+                         v.isNotEmpty() && v[0] == CMD_DONE -> finished.complete(true)
