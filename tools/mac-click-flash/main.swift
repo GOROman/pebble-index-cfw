@@ -373,6 +373,7 @@ final class ClickFlashApp: NSObject, NSApplicationDelegate, CBCentralManagerDele
         overlays.forEach { $0.orderOut(nil) }
         comments?.clear()
         audioWave.clear()
+        log("audio-wave-animation", ["frames": audioWave.animationFrames])
         log("stopped")
         try? logFile?.close()
     }
