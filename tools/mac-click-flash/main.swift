@@ -16,6 +16,7 @@ final class ClickFlashApp: NSObject, NSApplicationDelegate, CBCentralManagerDele
     private var overlays: [NSPanel] = []
     private var hideTimer: Timer?
     private var counter = ClickCounter()
+    private var doubleTap = DoubleTapDetector()
     private var selectedDevice: UUID?
     private var paused = false
     private var flashes = 0
@@ -204,6 +205,7 @@ final class ClickFlashApp: NSObject, NSApplicationDelegate, CBCentralManagerDele
 
     @objc private func togglePause() {
         paused.toggle()
+        doubleTap.reset()
         pauseItem.title = paused ? "再開" : "一時停止"
         statusItem.button?.appearsDisabled = paused
         if paused {
@@ -312,7 +314,10 @@ final class ClickFlashApp: NSObject, NSApplicationDelegate, CBCentralManagerDele
         if clicks > 0 {
             log("click", ["counter": Int(value), "delta": clicks, "rssi": RSSI.intValue,
                           "activeComments": comments.activeCommentCount])
-            flash(source: "ble", clicks: clicks)
+            if !paused, doubleTap.consume(clicks: clicks, at: ProcessInfo.processInfo.systemUptime) {
+                log("double-tap", ["interval": 0.45, "clicks": clicks])
+                flash(source: "ble-double-tap", clicks: 2)
+            }
         }
         let samples = AudioReceiver.advertisedSamples(data)
         if samples > 0, !paused, audioReceiver == nil, Date() >= audioRetryAfter {
