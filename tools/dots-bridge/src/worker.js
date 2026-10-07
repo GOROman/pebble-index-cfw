@@ -65,7 +65,7 @@ export default {
   fetch(request,env) {return env.BRIDGE.get(env.BRIDGE.idFromName('owner')).fetch(request);}
 };
 export class PebbleBridge {
-  constructor(ctx,env) {this.ctx=ctx;this.env=env;this.store=ctx.storage;}
+  constructor(ctx,env) {this.ctx=ctx;this.env=env;this.store=ctx.storage;this.requests=[];}
   async origin(request) {return new URL(request.url).origin;}
   metadata(origin) {return {issuer:origin,authorization_endpoint:`${origin}/authorize`,token_endpoint:`${origin}/token`,registration_endpoint:`${origin}/register`,response_types_supported:['code'],grant_types_supported:['authorization_code','refresh_token'],token_endpoint_auth_methods_supported:['none'],code_challenge_methods_supported:['S256'],scopes_supported:[SCOPE],authorization_response_iss_parameter_supported:true};}
   async authenticated(request,origin) {
@@ -76,6 +76,16 @@ export class PebbleBridge {
   }
   unauthorized(origin) {return json({error:'authentication_required'},401,{'WWW-Authenticate':`Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource"`});}
   async fetch(request) {
+    const response=await this.handle(request);
+    // Only routing/status diagnostics: never headers, query strings or bodies.
+    const path=new URL(request.url).pathname;
+    if (path!=='/status') {
+      this.requests.push({method:request.method,path,status:response.status,time:new Date().toISOString()});
+      this.requests=this.requests.slice(-30);
+    }
+    return response;
+  }
+  async handle(request) {
     const url=new URL(request.url),origin=url.origin,path=url.pathname;
     try {
       if (path==='/health') return json({ok:true,service:'pebble-dots-bridge'});
@@ -92,7 +102,7 @@ export class PebbleBridge {
         if (!this.env.INGEST_TOKEN || !safeEqual(request.headers.get('Authorization'),`Bearer ${this.env.INGEST_TOKEN}`)) return json({error:'unauthorized'},401);
         const subscriptions=await this.activeSubscriptions();
         const jobs=await this.store.list({prefix:'job:'});
-        return json({subscriptions:subscriptions.length,pending_deliveries:jobs.size});
+        return json({subscriptions:subscriptions.length,pending_deliveries:jobs.size,requests:this.requests});
       }
       if (path==='/mcp') {
         if (!await this.authenticated(request,origin)) return this.unauthorized(origin);
