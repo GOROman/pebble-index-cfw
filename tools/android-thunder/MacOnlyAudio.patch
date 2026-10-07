@@ -1,0 +1,46 @@
+--- a/src/main/kotlin/poc/ringclick/MainActivity.kt
++++ b/src/main/kotlin/poc/ringclick/MainActivity.kt
+@@ -207,7 +207,7 @@
+                 append("\nClicks: ").append(s.totalClicks)
+                 if (s.counter != null) append("  (counter ").append(s.counter).append(')')
+                 val secs = clipSeconds(s)
+-                if (secs != null) append("\nRecording waiting: %.1f s".format(secs))
++                if (secs != null) append("\nRecording waiting: %.1f s — Mac receives audio".format(secs))
+             }
+             if (s.kind == RingKind.FAILSAFE) {
+                 append("\n\nTo restore the official firmware, keep the ring in failsafe and open the official app — it will sync and reinstall it.")
+@@ -233,7 +233,7 @@
+      * and get it, and the ring clearing it on delivery is what stops that from repeating.
+      */
+     private fun maybeAutoFetch(s: RingState) {
+-        if (!audioScreenActive || busy || autoFetching || SystemClock.elapsedRealtime() < autoRetryAfter) return
++        if (!ClipDownload.receptionEnabled || !audioScreenActive || busy || autoFetching || SystemClock.elapsedRealtime() < autoRetryAfter) return
+         val address = s.address ?: return
+         autoFetching = true
+         scope.launch {
+@@ -330,7 +330,7 @@
+                  * automatic attempt failed and the user would rather not wait out the
+                  * pause. It sits above "Enter failsafe" because a reset takes the clip
+                  * with it — the ring holds it in RAM. */
+-                if (hasAudio) addInstantAction("Fetch recording now") {
++                if (hasAudio && ClipDownload.receptionEnabled) addInstantAction("Fetch recording now") {
+                     autoRetryAfter = 0L
+                     maybeAutoFetch(scanner.state.value)
+                 }
+--- a/src/main/kotlin/poc/ringclick/ClipDownload.kt
++++ b/src/main/kotlin/poc/ringclick/ClipDownload.kt
+@@ -38,10 +38,14 @@
+  */
+ object ClipDownload {
+ 
++    // Temporarily give the Mac exclusive ownership of ring voice transfers.
++    val receptionEnabled = false
++
+     /** Bytes on the wire become a WAV, returned for the caller to keep. Null on failure. */
+     @SuppressLint("MissingPermission")
+     @Suppress("DEPRECATION") // one code path for minSdk 31..36, as elsewhere in this app
+     suspend fun fetch(context: Context, address: String, onReceiveStart: () -> Unit = {}, log: (String) -> Unit): ByteArray? {
++        if (!receptionEnabled) { log("Audio reception disabled — Mac receives audio"); return null }
+         val adapter = context.getSystemService(BluetoothManager::class.java).adapter
+         if (adapter == null) { log("No Bluetooth"); return null }
+         val device = adapter.getRemoteDevice(address)
