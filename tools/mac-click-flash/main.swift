@@ -30,6 +30,7 @@ final class ClickFlashApp: NSObject, NSApplicationDelegate, CBCentralManagerDele
     private var soundItem: NSMenuItem!
     private var playItem: NSMenuItem!
     private let speechLine = NSMenuItem(title: "STT: 日本語・ローカル認識", action: nil, keyEquivalent: "")
+    private let audioWave = AudioWaveOverlay()
     private var comments: CommentOverlay!
     private var speech: SpeechPipeline!
     private var recordingsFolder: URL {
@@ -69,7 +70,14 @@ final class ClickFlashApp: NSObject, NSApplicationDelegate, CBCentralManagerDele
             name: NSApplication.didChangeScreenParametersNotification, object: nil
         )
         log("started", ["selfTest": selfTest, "device": selectedDevice?.uuidString ?? "auto"])
-        if let text = option("--demo-comment") {
+        if let file = option("--wave-file") {
+            audioWave.receiving()
+            log("audio-white-flash")
+            Timer.scheduledTimer(withTimeInterval: 0.4, repeats: false) { [weak self] _ in
+                self?.showWave(URL(fileURLWithPath: file))
+            }
+            Timer.scheduledTimer(withTimeInterval: 4, repeats: false) { _ in NSApp.terminate(nil) }
+        } else if let text = option("--demo-comment") {
             if let preview = option("--preview") { try? CommentOverlay.preview(text, to: URL(fileURLWithPath: preview)) }
             Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in self?.showComment(text) }
             Timer.scheduledTimer(withTimeInterval: 1.4, repeats: false) { [weak self] _ in self?.showComment("声がコメントになって流れる！") }
@@ -192,6 +200,7 @@ final class ClickFlashApp: NSObject, NSApplicationDelegate, CBCentralManagerDele
             hideTimer?.invalidate()
             overlays.forEach { $0.alphaValue = 0 }
             comments.clear()
+            audioWave.clear()
         }
         log("pause", ["paused": paused])
     }
@@ -214,6 +223,12 @@ final class ClickFlashApp: NSObject, NSApplicationDelegate, CBCentralManagerDele
         playback?.stop()
         playback = NSSound(contentsOf: lastRecording, byReference: true)
         playback?.play()
+    }
+
+    private func showWave(_ url: URL) {
+        guard !paused else { return }
+        do { log("audio-waveform", ["samples": try audioWave.showWav(url), "path": url.path]) }
+        catch { log("audio-waveform-error", ["message": error.localizedDescription]) }
     }
 
     private func showComment(_ text: String) {
@@ -293,10 +308,18 @@ final class ClickFlashApp: NSObject, NSApplicationDelegate, CBCentralManagerDele
         if samples > 0, !paused, audioReceiver == nil, Date() >= audioRetryAfter {
             audioLine.title = "音声: 受信中…"
             let receiver = AudioReceiver(peripheral: peripheral, central: central, folder: recordingsFolder,
-                                         log: { [weak self] event, fields in self?.log(event, fields) }) { [weak self] url in
+                                         log: { [weak self] event, fields in
+                guard let self else { return }
+                self.log(event, fields)
+                if event == "audio-start", !self.paused {
+                    self.audioWave.receiving()
+                    self.log("audio-white-flash")
+                } else if event == "audio-error" { self.audioWave.clear() }
+            }) { [weak self] url in
                 guard let self else { return }
                 self.audioRetryAfter = Date().addingTimeInterval(url == nil ? 20 : 2)
                 if let url {
+                    self.showWave(url)
                     self.lastRecording = url
                     self.playItem.isEnabled = true
                     self.audioLine.title = "音声: 保存しました（\(url.lastPathComponent)）"
@@ -339,6 +362,7 @@ final class ClickFlashApp: NSObject, NSApplicationDelegate, CBCentralManagerDele
         hideTimer?.invalidate()
         overlays.forEach { $0.orderOut(nil) }
         comments?.clear()
+        audioWave.clear()
         log("stopped")
         try? logFile?.close()
     }
