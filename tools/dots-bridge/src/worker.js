@@ -80,8 +80,10 @@ export class PebbleBridge {
     // Only routing/status diagnostics: never headers, query strings or bodies.
     const path=new URL(request.url).pathname;
     if (path!=='/status') {
+      this.requests=await this.store.get('routing-diagnostics') || [];
       this.requests.push({method:request.method,path,status:response.status,time:new Date().toISOString()});
       this.requests=this.requests.slice(-30);
+      await this.store.put('routing-diagnostics',this.requests);
     }
     return response;
   }
@@ -102,7 +104,7 @@ export class PebbleBridge {
         if (!this.env.INGEST_TOKEN || !safeEqual(request.headers.get('Authorization'),`Bearer ${this.env.INGEST_TOKEN}`)) return json({error:'unauthorized'},401);
         const subscriptions=await this.activeSubscriptions();
         const jobs=await this.store.list({prefix:'job:'});
-        return json({subscriptions:subscriptions.length,pending_deliveries:jobs.size,requests:this.requests});
+        return json({subscriptions:subscriptions.length,pending_deliveries:jobs.size,requests:await this.store.get('routing-diagnostics') || []});
       }
       if (path==='/mcp') {
         if (!await this.authenticated(request,origin)) return this.unauthorized(origin);
