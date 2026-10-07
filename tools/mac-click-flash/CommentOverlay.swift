@@ -46,7 +46,7 @@ final class CommentOverlay {
             let width = layer.bounds.width
             let start = view.bounds.width + width / 2 + 24
             let end = -width / 2 - 24
-            let duration = TimeInterval((start - end) / 260)
+            let duration = TimeInterval((start - end) / 330)
             longest = max(longest, duration)
             let y = view.bounds.height * (0.22 + Double(lane) * 0.135)
             CATransaction.begin()

@@ -1,0 +1,10 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "pebble-voice-dots",
+  "version": "0.1.0",
+  "description": "Receive Pebble ring voice transcripts through MCP Events.",
+  "author": {
+    "name": "GOROman"
+  },
+  "repository": "https://github.com/GOROman/pebble-index-cfw"
+}

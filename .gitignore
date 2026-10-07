@@ -9,3 +9,6 @@ JLinkLog.txt
 
 # Ozone files
 *.jdebug.user
+
+# Cloudflare local build/cache
+.wrangler/

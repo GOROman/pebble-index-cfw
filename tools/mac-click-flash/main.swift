@@ -1,5 +1,6 @@
 import AppKit
 import CoreBluetooth
+import AVFoundation
 
 func option(_ name: String) -> String? {
     guard let index = CommandLine.arguments.firstIndex(of: name),
@@ -16,7 +17,6 @@ final class ClickFlashApp: NSObject, NSApplicationDelegate, CBCentralManagerDele
     private var overlays: [NSPanel] = []
     private var hideTimer: Timer?
     private var counter = ClickCounter()
-    private var doubleTap = DoubleTapDetector()
     private var selectedDevice: UUID?
     private var paused = false
     private var flashes = 0
@@ -26,11 +26,15 @@ final class ClickFlashApp: NSObject, NSApplicationDelegate, CBCentralManagerDele
     private var audioRetryAfter = Date.distantPast
     private var lastRecording: URL?
     private var playback: NSSound?
-    private var clickSound = NSSound(contentsOf: Bundle.main.url(forResource: "thunder", withExtension: "wav") ?? URL(fileURLWithPath: "/dev/null"), byReference: false)
+    private var clickSound: AVAudioPlayer? = {
+        guard let url = Bundle.main.url(forResource: "thunder", withExtension: "wav") else { return nil }
+        return try? AVAudioPlayer(contentsOf: url)
+    }()
     private var soundMuted = false
     private var soundItem: NSMenuItem!
     private var playItem: NSMenuItem!
     private let speechLine = NSMenuItem(title: "STT: 日本語・ローカル認識", action: nil, keyEquivalent: "")
+    private var dots: DotsBridge!
     private let audioWave = AudioWaveOverlay()
     private var comments: CommentOverlay!
     private var speech: SpeechPipeline!
@@ -42,6 +46,7 @@ final class ClickFlashApp: NSObject, NSApplicationDelegate, CBCentralManagerDele
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        clickSound?.prepareToPlay()
         if let path = option("--log") {
             if !FileManager.default.fileExists(atPath: path) {
                 FileManager.default.createFile(atPath: path, contents: nil)
@@ -57,6 +62,7 @@ final class ClickFlashApp: NSObject, NSApplicationDelegate, CBCentralManagerDele
             }
             selectedDevice = id
         }
+        dots = DotsBridge(log: { [weak self] event, fields in self?.log(event, fields) })
         buildMenu()
         rebuildOverlays()
         comments = CommentOverlay()
@@ -168,11 +174,13 @@ final class ClickFlashApp: NSObject, NSApplicationDelegate, CBCentralManagerDele
             panel.hidesOnDeactivate = false
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
             panel.alphaValue = 0
+            panel.orderFrontRegardless()
             return panel
         }
     }
 
     private func flash(source: String, clicks: Int) {
+        let effectStarted = ProcessInfo.processInfo.systemUptime
         guard !paused else {
             log("paused-click", ["clicks": clicks])
             return
@@ -182,13 +190,17 @@ final class ClickFlashApp: NSObject, NSApplicationDelegate, CBCentralManagerDele
             $0.alphaValue = 1
             $0.orderFrontRegardless()
         }
+        let visualReady = ProcessInfo.processInfo.systemUptime
         flashes += 1
         if !soundMuted {
-            clickSound?.stop()
+            clickSound?.pause()
+            clickSound?.currentTime = 0
             let played = clickSound?.play() ?? false
             log("flash-sound", ["played": played, "name": "thunder"])
         }
-        log("flash", ["source": source, "clicks": clicks, "screens": overlays.count, "total": flashes])
+        log("flash", ["source": source, "clicks": clicks, "screens": overlays.count, "total": flashes,
+                      "effectSetupMs": (ProcessInfo.processInfo.systemUptime - effectStarted) * 1000,
+                      "windowSetupMs": (visualReady - effectStarted) * 1000])
         // Timed lightning bursts keep the main run loop available for BLE and comments.
         let brightness: [CGFloat] = [0, 1, 0.35, 0]
         var step = 0
@@ -205,7 +217,6 @@ final class ClickFlashApp: NSObject, NSApplicationDelegate, CBCentralManagerDele
 
     @objc private func togglePause() {
         paused.toggle()
-        doubleTap.reset()
         pauseItem.title = paused ? "再開" : "一時停止"
         statusItem.button?.appearsDisabled = paused
         if paused {
@@ -221,7 +232,7 @@ final class ClickFlashApp: NSObject, NSApplicationDelegate, CBCentralManagerDele
     @objc private func toggleSound() {
         soundMuted.toggle()
         soundItem.title = soundMuted ? "効果音をオン" : "効果音をミュート"
-        if soundMuted { clickSound?.stop() }
+        if soundMuted { clickSound?.pause() }
         log("sound-mute", ["muted": soundMuted])
     }
     @objc private func testComment() { showComment("ニコニコ風コメント、動いてます！") }
@@ -263,6 +274,10 @@ final class ClickFlashApp: NSObject, NSApplicationDelegate, CBCentralManagerDele
                 } else {
                     self.speechLine.title = "STT: \(String(output.text.prefix(35)))"
                     self.showComment(output.text)
+                    if !self.paused {
+                        let fullText = (try? String(contentsOf: output.transcript, encoding: .utf8)) ?? output.text
+                        self.dots.send(text: fullText, recording: recording)
+                    }
                 }
             case .failure(let error):
                 self.speechLine.title = "STT: \(error.localizedDescription)"
@@ -314,10 +329,7 @@ final class ClickFlashApp: NSObject, NSApplicationDelegate, CBCentralManagerDele
         if clicks > 0 {
             log("click", ["counter": Int(value), "delta": clicks, "rssi": RSSI.intValue,
                           "activeComments": comments.activeCommentCount])
-            if !paused, doubleTap.consume(clicks: clicks, at: ProcessInfo.processInfo.systemUptime) {
-                log("double-tap", ["interval": 0.45, "clicks": clicks])
-                flash(source: "ble-double-tap", clicks: 2)
-            }
+            flash(source: "ble", clicks: clicks)
         }
         let samples = AudioReceiver.advertisedSamples(data)
         if samples > 0, !paused, audioReceiver == nil, Date() >= audioRetryAfter {

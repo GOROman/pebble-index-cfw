@@ -1,0 +1,22 @@
+--- a/src/main/kotlin/poc/ringclick/RingScanner.kt
++++ b/src/main/kotlin/poc/ringclick/RingScanner.kt
+@@ -2,6 +2,7 @@
+ 
+ import android.annotation.SuppressLint
+ import android.bluetooth.BluetoothManager
++import android.bluetooth.le.ScanFilter
+ import android.bluetooth.le.ScanCallback
+ import android.bluetooth.le.ScanResult
+ import android.bluetooth.le.ScanSettings
+@@ -140,7 +141,10 @@
+         val s = context.getSystemService(BluetoothManager::class.java)
+             .adapter?.bluetoothLeScanner ?: return false
+         s.startScan(
+-            null,
++            listOf(
++                ScanFilter.Builder().setManufacturerData(CFW_COMPANY, byteArrayOf()).build(),
++                ScanFilter.Builder().setManufacturerData(STOCK_COMPANY, byteArrayOf()).build(),
++            ),
+             ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build(),
+             cb,
+         )

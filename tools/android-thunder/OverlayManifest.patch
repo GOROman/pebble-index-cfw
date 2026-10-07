@@ -1,0 +1,23 @@
+--- a/src/main/AndroidManifest.xml
++++ b/src/main/AndroidManifest.xml
+@@ -7,10 +7,20 @@
+     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+     <!-- No INTERNET / ACCESS_NETWORK_STATE on purpose: fully offline app, firmwares in the APK. -->
+ 
++    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
++    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
++    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
++    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
++    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
++
+     <application
+         android:label="Pebble Index Flasher"
+         android:icon="@mipmap/ic_launcher"
+         android:theme="@style/Theme.PebbleIndexFlasher">
++        <service android:name=".ThunderService" android:exported="false" android:foregroundServiceType="connectedDevice" />
++        <receiver android:name=".ThunderBootReceiver" android:exported="false">
++            <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /></intent-filter>
++        </receiver>
+         <!-- portrait: a rotation would recreate the Activity and abort a flash mid-SUOTA -->
+         <activity
+             android:name=".MainActivity"

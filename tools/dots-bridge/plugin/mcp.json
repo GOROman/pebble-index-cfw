@@ -1,0 +1,9 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "pebble-voice": {
+      "type": "streamable-http",
+      "url": "https://pebble-dots-bridge.hentai-naru-sensei.workers.dev/mcp"
+    }
+  }
+}

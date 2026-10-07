@@ -1,0 +1,9 @@
+{
+  "$schema": "https://developers.cloudflare.com/workers/wrangler/config-schema.json",
+  "name": "pebble-dots-bridge",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-10-07",
+  "workers_dev": true,
+  "durable_objects": {"bindings": [{"name": "BRIDGE", "class_name": "PebbleBridge"}]},
+  "migrations": [{"tag": "v1", "new_sqlite_classes": ["PebbleBridge"]}]
+}
