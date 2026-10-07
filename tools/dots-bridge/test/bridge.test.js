@@ -21,9 +21,10 @@ async function oauth(bridge,store) {
   const verifier='a'.repeat(43),challenge=Buffer.from(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier))).toString('base64url');
   const query=new URLSearchParams({client_id:client.client_id,redirect_uri:redirect,response_type:'code',code_challenge_method:'S256',code_challenge:challenge,resource:origin+'/mcp',scope:'voice.read',state:'csrf-fixture'});
   const page=await bridge.fetch(new Request(origin+'/authorize?'+query));assert.equal(page.status,200);
+  assert.match(page.headers.get('Content-Security-Policy'),/form-action 'self' https:\/\/chatgpt\.com;/);
   const flow=(await page.text()).match(/name="flow" value="([^"]+)"/)[1];
   const login=await bridge.fetch(new Request(origin+'/authorize',{method:'POST',body:new URLSearchParams({flow,passphrase:'fixture-password'})}));
-  assert.equal(login.status,302);const location=new URL(login.headers.get('Location'));assert.equal(location.searchParams.get('state'),'csrf-fixture');
+  assert.equal(login.status,303);const location=new URL(login.headers.get('Location'));assert.equal(location.searchParams.get('state'),'csrf-fixture');
   const form={grant_type:'authorization_code',code:location.searchParams.get('code'),client_id:client.client_id,redirect_uri:redirect,resource:origin+'/mcp',code_verifier:verifier};
   const send=body=>bridge.fetch(new Request(origin+'/token',{method:'POST',body:new URLSearchParams(body)}));
   assert.equal((await send({...form,code_verifier:'b'.repeat(43)})).status,400);

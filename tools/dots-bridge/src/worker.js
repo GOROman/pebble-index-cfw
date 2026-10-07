@@ -43,7 +43,7 @@ export async function signedPost(subscription, value, fetcher = fetch) {
     'webhook-signature':signatures,'X-MCP-Subscription-Id':subscription.id,
   }, body});
 }
-function html(text,status=200) { return new Response(text,{status,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'",'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'}}); }
+function html(text,status=200) { return new Response(text,{status,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self' https://chatgpt.com; frame-ancestors 'none'",'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'}}); }
 const escape = text => String(text).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function readJSON(request) {
   const text = await request.text();
@@ -150,7 +150,7 @@ export class PebbleBridge {
     await this.store.delete(`flow:${id}`);
     const code=random();await this.store.put(`code:${await sha(code)}`,{...flow,expires:Date.now()+60000});
     const redirect=new URL(flow.redirect);redirect.searchParams.set('code',code);redirect.searchParams.set('state',flow.state);redirect.searchParams.set('iss',url.origin);
-    return Response.redirect(redirect.href,302);
+    return Response.redirect(redirect.href,303);
   }
   async token(request,origin) {
     const p=new URLSearchParams(await request.text()),grant=p.get('grant_type');
